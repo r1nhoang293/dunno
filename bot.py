@@ -302,6 +302,4 @@ with col2:
     if st.button("Skip time"):
         stage = get_stage(len(st.session_state.messages))
         memory = load_text(REL_FILE)
-        mood = get_mood()
-
-        time_prompt = f"Time has passed. Continue naturally as {st.session_state.profile['
+       
