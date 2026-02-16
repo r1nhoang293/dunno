@@ -302,4 +302,15 @@ with col2:
     if st.button("Skip time"):
         stage = get_stage(len(st.session_state.messages))
         memory = load_text(REL_FILE)
-       
+        mood = get_mood()
+
+        time_prompt = f"Time has passed. Continue naturally as {st.session_state.profile['name']} and continue the conversation."
+
+        response = call_ai(
+            [{"role": "system", "content": time_prompt}]
+            + st.session_state.messages
+        )
+
+        st.session_state.messages.append({"role": "assistant", "content": response})
+        save_json(CHAT_FILE, st.session_state.messages)
+        st.rerun()
