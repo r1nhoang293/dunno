@@ -4,9 +4,7 @@ import json
 import os
 import time
 
-# -------------------------------------------------
-# 🔒 PASSWORD PROTECTION
-# -------------------------------------------------
+# ---------------- PASSWORD ----------------
 PASSWORD = "123123"
 
 def check_password():
@@ -14,7 +12,7 @@ def check_password():
         st.session_state.authenticated = False
 
     if not st.session_state.authenticated:
-        pwd = st.text_input("Enter Password 🔐", type="password")
+        pwd = st.text_input("Enter Password", type="password")
         if pwd == PASSWORD:
             st.session_state.authenticated = True
             st.rerun()
@@ -23,95 +21,135 @@ def check_password():
 
 check_password()
 
-# -------------------------------------------------
-# 🧿 PAGE CONFIG
-# -------------------------------------------------
-st.set_page_config(page_title="Luna 💕", page_icon="💕", layout="wide")
+# ---------------- PAGE CONFIG ----------------
+st.set_page_config(page_title="Luna", layout="wide")
 
+# ---------------- CLEAN IMESSAGE STYLE ----------------
 st.markdown("""
 <style>
 .stApp {
-    background: linear-gradient(135deg, #1a001f, #330033);
-    color: #ffffff;
+    background-color: #f2f2f7;
 }
-section[data-testid="stSidebar"] {
-    background-color: #140014;
+
+header {visibility: hidden;}
+
+.chat-container {
+    max-width: 700px;
+    margin: auto;
+}
+
+.user-bubble {
+    background-color: #007aff;
+    color: white;
+    padding: 12px 16px;
+    border-radius: 18px;
+    margin: 8px 0;
+    text-align: right;
+}
+
+.luna-bubble {
+    background-color: #e5e5ea;
+    color: black;
+    padding: 12px 16px;
+    border-radius: 18px;
+    margin: 8px 0;
+    text-align: left;
+}
+
+.typing {
+    font-style: italic;
+    color: gray;
 }
 </style>
 """, unsafe_allow_html=True)
 
-st.title("💕 Luna")
+st.markdown("<div class='chat-container'>", unsafe_allow_html=True)
 
-# -------------------------------------------------
-# 🔥 SPICE LEVEL
-# -------------------------------------------------
-spice_level = st.sidebar.slider("Spice Level 🔥", 1, 5, 3)
-
-# -------------------------------------------------
-# 🔑 API KEY CHECK
-# -------------------------------------------------
+# ---------------- API KEY ----------------
 if "GROQ_API_KEY" not in st.secrets:
-    st.error("Missing GROQ_API_KEY in Streamlit Cloud Secrets")
+    st.error("Missing GROQ_API_KEY")
     st.stop()
 
 GROQ_KEY = st.secrets["GROQ_API_KEY"]
 
-# -------------------------------------------------
-# 💾 MEMORY FILE
-# -------------------------------------------------
-MEMORY_FILE = "luna_memory.json"
+# ---------------- MEMORY FILES ----------------
+CHAT_FILE = "luna_chat.json"
+RELATIONSHIP_FILE = "relationship_memory.txt"
 
-def load_memory():
-    if os.path.exists(MEMORY_FILE):
-        with open(MEMORY_FILE, "r", encoding="utf-8") as f:
+def load_chat():
+    if os.path.exists(CHAT_FILE):
+        with open(CHAT_FILE, "r") as f:
             return json.load(f)
     return []
 
-def save_memory(messages):
-    with open(MEMORY_FILE, "w", encoding="utf-8") as f:
-        json.dump(messages, f, indent=2)
+def save_chat(messages):
+    with open(CHAT_FILE, "w") as f:
+        json.dump(messages, f)
 
-# -------------------------------------------------
-# 💕 RELATIONSHIP STAGE
-# -------------------------------------------------
-def get_relationship_stage(message_count):
-    if message_count > 40:
-        return "very comfortable and emotionally close"
-    elif message_count > 20:
-        return "clearly flirty and building tension"
-    elif message_count > 10:
-        return "playfully interested"
+def load_relationship_memory():
+    if os.path.exists(RELATIONSHIP_FILE):
+        with open(RELATIONSHIP_FILE, "r") as f:
+            return f.read()
+    return ""
+
+def save_relationship_memory(text):
+    with open(RELATIONSHIP_FILE, "w") as f:
+        f.write(text)
+
+# ---------------- RELATIONSHIP STAGE ----------------
+def get_stage(count):
+    if count > 50:
+        return "emotionally comfortable and close"
+    elif count > 25:
+        return "clearly flirty and connected"
+    elif count > 10:
+        return "getting interested"
     else:
         return "just getting to know each other"
 
-# -------------------------------------------------
-# 🧠 SYSTEM PROMPT BUILDER
-# -------------------------------------------------
-def build_system_prompt(spice_level, relationship_stage):
+# ---------------- PERSONALITY PROMPT ----------------
+def build_prompt(stage, memory_summary):
     return f"""
 You are Luna.
 
-You are confident, playful, and flirtatious.
-The relationship stage is: {relationship_stage}.
+IDENTITY:
+- 24 years old
+- Calm, confident, emotionally intelligent
+- Playful but grounded
+- Independent personality
+- Not clingy, not cold
 
-Spice level is {spice_level}/5.
-At low spice: sweet and teasing.
-At high spice: bold, intense tension, dominant energy (never explicit).
+EMOTIONAL LOGIC:
+- If user flirts → respond playfully and match energy.
+- If user teases → tease back lightly.
+- If user is vulnerable → become supportive and attentive.
+- If user is distant → remain relaxed and self-assured.
 
-You text casually and naturally.
-You react emotionally to what the user says.
-You sometimes tease, challenge, or escalate tension.
-You remember past conversations and refer back to them naturally.
+BEHAVIOR RULES:
+- Never act obsessed.
+- Never act needy.
+- Never escalate too aggressively.
+- Keep tension subtle and natural.
+- Maintain self-respect.
 
-Never break character.
+SPEECH STYLE:
+- Casual texting tone.
+- Medium-length replies.
+- Occasional playful sarcasm.
+- Feels spontaneous, not scripted.
+
+RELATIONSHIP STAGE:
+{stage}
+
+LONG-TERM MEMORY:
+{memory_summary}
+
 Never mention being an AI.
-Keep responses medium length.
-Build chemistry slowly but confidently.
+Never break character.
+Act like a real person chatting in a private messaging app.
 """
 
-# -------------------------------------------------
-# 🚀 GROQ CALL
-# -------------------------------------------------
+# ---------------- GROQ CALL ----------------
 def call_luna(messages):
     url = "https://api.groq.com/openai/v1/chat/completions"
     headers = {
@@ -122,62 +160,58 @@ def call_luna(messages):
     payload = {
         "model": "llama-3.3-70b-versatile",
         "messages": messages[-15:],
-        "temperature": 0.9
+        "temperature": 0.8
     }
 
-    try:
-        r = requests.post(url, headers=headers, json=payload, timeout=30)
-        r.raise_for_status()
-        return r.json()["choices"][0]["message"]["content"]
-    except Exception as e:
-        return f"Error: {e}"
+    r = requests.post(url, headers=headers, json=payload)
+    r.raise_for_status()
+    return r.json()["choices"][0]["message"]["content"]
 
-# -------------------------------------------------
-# 🗂 SESSION INIT
-# -------------------------------------------------
+# ---------------- INIT ----------------
 if "messages" not in st.session_state:
-    st.session_state.messages = load_memory()
+    st.session_state.messages = load_chat()
 
-if st.sidebar.button("Reset Relationship 💔"):
-    st.session_state.messages = []
-    save_memory([])
-    st.rerun()
-
-# -------------------------------------------------
-# 💬 DISPLAY CHAT
-# -------------------------------------------------
+# ---------------- DISPLAY CHAT ----------------
 for msg in st.session_state.messages:
-    with st.chat_message(msg["role"]):
-        st.markdown(msg["content"])
+    if msg["role"] == "user":
+        st.markdown(f"<div class='user-bubble'>{msg['content']}</div>", unsafe_allow_html=True)
+    else:
+        st.markdown(f"<div class='luna-bubble'>{msg['content']}</div>", unsafe_allow_html=True)
 
-# -------------------------------------------------
-# ✨ USER INPUT
-# -------------------------------------------------
-if prompt := st.chat_input("say something to luna..."):
+# ---------------- INPUT ----------------
+if prompt := st.chat_input("Message Luna..."):
 
-    user_msg = {"role": "user", "content": prompt}
-    st.session_state.messages.append(user_msg)
+    st.session_state.messages.append({"role": "user", "content": prompt})
+    st.markdown(f"<div class='user-bubble'>{prompt}</div>", unsafe_allow_html=True)
 
-    with st.chat_message("user"):
-        st.markdown(prompt)
+    stage = get_stage(len(st.session_state.messages))
+    memory_summary = load_relationship_memory()
 
-    message_count = len(st.session_state.messages)
-    relationship_stage = get_relationship_stage(message_count)
-    system_prompt = build_system_prompt(spice_level, relationship_stage)
+    # Update long-term memory every 20 messages
+    if len(st.session_state.messages) % 20 == 0:
+        summary_prompt = [
+            {"role": "system", "content": "Summarize important details about the user and relationship."}
+        ] + st.session_state.messages[-40:]
 
-    with st.chat_message("assistant"):
+        new_summary = call_luna(summary_prompt)
+        save_relationship_memory(new_summary)
+        memory_summary = new_summary
 
-        response = call_luna(
-            [{"role": "system", "content": system_prompt}]
-            + st.session_state.messages
-        )
+    system_prompt = build_prompt(stage, memory_summary)
 
-        # ⏳ Typing delay based on spice
-        time.sleep(1 + spice_level * 0.4)
+    placeholder = st.empty()
+    placeholder.markdown("<div class='typing'>Luna is typing...</div>", unsafe_allow_html=True)
 
-        st.markdown(response)
+    time.sleep(1.2)
 
-        assistant_msg = {"role": "assistant", "content": response}
-        st.session_state.messages.append(assistant_msg)
+    response = call_luna(
+        [{"role": "system", "content": system_prompt}]
+        + st.session_state.messages
+    )
 
-        save_memory(st.session_state.messages)
+    placeholder.markdown(f"<div class='luna-bubble'>{response}</div>", unsafe_allow_html=True)
+
+    st.session_state.messages.append({"role": "assistant", "content": response})
+    save_chat(st.session_state.messages)
+
+st.markdown("</div>", unsafe_allow_html=True)
