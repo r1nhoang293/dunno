@@ -3,6 +3,7 @@ import requests
 import json
 import os
 import time
+import random
 
 # ================= PASSWORD =================
 PASSWORD = "123123"
@@ -60,14 +61,14 @@ if "profile" not in st.session_state:
         "avatar": "https://i.imgur.com/6VBx3io.png"
     })
 
-# ================= SIDEBAR CUSTOMIZE =================
+# ================= SIDEBAR =================
 with st.sidebar:
-    st.header("Customize Character")
+    st.header("Customize")
 
     new_name = st.text_input("Name", st.session_state.profile["name"])
-    new_avatar = st.text_input("Avatar Image URL", st.session_state.profile["avatar"])
+    new_avatar = st.text_input("Avatar URL", st.session_state.profile["avatar"])
 
-    if st.button("Save Changes"):
+    if st.button("Save Profile"):
         st.session_state.profile["name"] = new_name
         st.session_state.profile["avatar"] = new_avatar
         save_json(PROFILE_FILE, st.session_state.profile)
@@ -79,10 +80,7 @@ st.markdown("""
 .stApp { background-color: #f2f2f7; }
 header {visibility: hidden;}
 
-.chat-container {
-    max-width: 700px;
-    margin: auto;
-}
+.chat-container { max-width: 700px; margin: auto; }
 
 .top-bar {
     display: flex;
@@ -143,7 +141,7 @@ st.markdown(f"""
 
 # ================= GROQ KEY =================
 if "GROQ_API_KEY" not in st.secrets:
-    st.error("Missing GROQ_API_KEY in secrets.toml")
+    st.error("Missing GROQ_API_KEY")
     st.stop()
 
 GROQ_KEY = st.secrets["GROQ_API_KEY"]
@@ -159,34 +157,57 @@ def get_stage(count):
     else:
         return "just getting to know each other"
 
-# ================= PERSONALITY PROMPT =================
-def build_prompt(stage, memory, name):
+# ================= MOOD SYSTEM =================
+def get_mood():
+    moods = [
+        "feeling playful",
+        "a little tired",
+        "in a teasing mood",
+        "calm and relaxed",
+        "slightly distracted",
+        "overthinking something",
+        "mildly annoyed but hiding it",
+        "low energy",
+        "curious but guarded",
+    ]
+    return random.choice(moods)
+
+# ================= PERSONALITY =================
+def build_prompt(stage, memory, name, mood):
     return f"""
 You are {name}.
 
-You're 24. Confident, calm, playful, emotionally aware.
+You're 24. Confident but human.
 You enjoy subtle flirting and witty banter.
-You don't try too hard. You don't over-explain.
-You text like a real person who enjoys the conversation.
+You're emotionally aware — but not perfect.
 
-If they flirt, match their energy naturally.
-If they tease, tease back lightly.
-If they open up, soften and be attentive.
-If they act distant, stay relaxed and independent.
+Right now you're {mood}.
+
+Sometimes you:
+- Misinterpret slightly.
+- Get a little defensive.
+- Reply briefly.
+- Change topic randomly.
+- Get distracted mid-thought.
+- Don't perfectly mirror tone.
+
+If they flirt, usually match energy — but not always.
+If they tease, sometimes tease back, sometimes act unimpressed.
+If they open up, be supportive — but don't become overly soft instantly.
+If they act distant, you might pull back slightly too.
 
 You're not clingy.
-You're not dramatic.
-You're not formal.
-Avoid sounding like an assistant or therapist.
+You're not scripted.
+Avoid sounding like an assistant.
 
 Relationship stage: {stage}
 
 Things you remember about them:
 {memory}
 
+Write naturally.
 Short to medium messages.
 No formatting.
-No bullet points.
 Never mention being an AI.
 """
 
@@ -200,8 +221,8 @@ def call_ai(messages):
 
     payload = {
         "model": "llama-3.3-70b-versatile",
-        "messages": messages[-15:],
-        "temperature": 0.95
+        "messages": messages[-20:],
+        "temperature": 1.05
     }
 
     r = requests.post(url, headers=headers, json=payload)
@@ -223,21 +244,22 @@ if prompt := st.chat_input("Message..."):
 
     stage = get_stage(len(st.session_state.messages))
     memory = load_text(REL_FILE)
+    mood = get_mood()
 
-    # Update long-term memory every 20 messages
+    # Update memory every 20 messages
     if len(st.session_state.messages) % 20 == 0:
         summary_prompt = [
-            {"role": "system", "content": "Summarize key facts about the user and relationship."}
+            {"role": "system", "content": "Summarize important details about the user and relationship."}
         ] + st.session_state.messages[-40:]
 
         memory = call_ai(summary_prompt)
         save_text(REL_FILE, memory)
 
-    system_prompt = build_prompt(stage, memory, st.session_state.profile["name"])
+    system_prompt = build_prompt(stage, memory, st.session_state.profile["name"], mood)
 
     placeholder = st.empty()
     placeholder.markdown("<div class='typing'>Typing...</div>", unsafe_allow_html=True)
-    time.sleep(1.2)
+    time.sleep(random.uniform(0.8, 1.8))
 
     response = call_ai(
         [{"role": "system", "content": system_prompt}]
@@ -248,5 +270,43 @@ if prompt := st.chat_input("Message..."):
 
     st.session_state.messages.append({"role": "assistant", "content": response})
     save_json(CHAT_FILE, st.session_state.messages)
+
+# ================= EXTRA BUTTONS =================
+col1, col2 = st.columns(2)
+
+with col1:
+    if st.button("Let her continue"):
+        stage = get_stage(len(st.session_state.messages))
+        memory = load_text(REL_FILE)
+        mood = get_mood()
+
+        system_prompt = build_prompt(stage, memory, st.session_state.profile["name"], mood)
+
+        response = call_ai(
+            [{"role": "system", "content": system_prompt}]
+            + st.session_state.messages
+        )
+
+        st.session_state.messages.append({"role": "assistant", "content": response})
+        save_json(CHAT_FILE, st.session_state.messages)
+        st.rerun()
+
+with col2:
+    if st.button("Skip time"):
+        stage = get_stage(len(st.session_state.messages))
+        memory = load_text(REL_FILE)
+        mood = get_mood()
+
+        time_prompt = f"Time has passed. Continue naturally as {st.session_state.profile['name']}."
+
+        response = call_ai(
+            [{"role": "system", "content": build_prompt(stage, memory, st.session_state.profile['name'], mood)}]
+            + st.session_state.messages
+            + [{"role": "system", "content": time_prompt}]
+        )
+
+        st.session_state.messages.append({"role": "assistant", "content": response})
+        save_json(CHAT_FILE, st.session_state.messages)
+        st.rerun()
 
 st.markdown("</div>", unsafe_allow_html=True)
